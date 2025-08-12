@@ -1,0 +1,10 @@
+item = [
+    { element = "Tintin", balloon = "", link = "https://www.tintin.com" },
+    { element = "History", balloon = "", link = "" },
+    { element = "Age", balloon = "Since 1929, Tintin is aged somewhat between 16 and 18 years.", link = "" },
+    { element = "Created 1929", balloon = "Tintin was created 1929 by the Belgian cartoonist Hergé, whose real name was Georges Remi (1907-1983)", link = "" },
+    { element = "International experience", balloon = "Tintin has a lot of international experience including working in the land of the Soviets, in the Congo, in Tibet and much more.", link = "https://www.tintin.com/en/albums" },
+    { element = "Formation", balloon = "", link = "" },
+    { element = "Driving licences", balloon = "Tintin is an experienced driver.", link = "https://www.tintin.com/en/news/5759/tintin-and-his-motorcars" },
+    { element = "Reporter", balloon = "Reporter is his profession", link = "" },
+]
