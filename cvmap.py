@@ -7,7 +7,7 @@ Basic useage:
     - Create a mindmap with Freemind and export it as svg
     - run cvmap (replace filename in the code below)
     - Now you have got a .toml-file you can edit. Add any balloons and links
-    - Run cvmap once again, open the ..._with_balloons.svg and enjoy.
+    - Run cvmap once again, open the ..._with_balloons.svg or the created html-file and enjoy.
  
 Example file: see examples. This script transforms examples/tintin.svg   to tintin_with_balloons.svg
  
@@ -22,7 +22,7 @@ TODO
  
 """
 import xml.etree.ElementTree as ET
-import csv
+import re
 import os, shutil, sys
 import tomli, tomli_w
 
@@ -284,14 +284,240 @@ def modify_text_tags(root_element, data2write):
                             # 3. Insert the <a> tag at exactly the position of the original <text> tag
                             parent.insert(child_index, a_tag)
                         
-                        # Debugging-Ausgabe
+                        # Debugging for the simple minded...
                         print(f"  Processed <text> tag '{current_text_content}': balloon={bool(balloon_text)}, link={bool(link_url)}")
 
     print(f"\nSummary: Modified {modified_count} tags in total.")
     return root_element
        
+def get_parent(root, child):
+    """
+    Helper function that find the direct parent-element of a given child in an xml-tree
+    
+    Parameters
+    ----------
+    root : XML Root element of an xml-tree
+        
+    child : xml-tree-element
+        The child we are searching the parent for
 
+    Returns
+    -------
+    parent: the parent element (none if child is root)
 
+    """
+    # Iteration over  all elements (first the children of root, then the "grand-children"....)
+    for parent in root.iter():
+        # This loop is only needed to check if the child is directly one level lower
+        for elem in parent:
+            if elem is child:
+                return parent
+    return None
+
+def get_inherited_fill_color(root_element):
+    """
+    Searches for the fill color of the first text tag in the SVG-element
+    Considers the direct and inhereted 'fill' attribute and some style-tag rules (rudimentary and untested)
+
+    Parameters
+    ----------
+    root_element : Root of an xml tree
+        
+    Returns
+    -------
+    string: fill attribute of element
+
+    """
+    default_color = "#000000"
+    if root_element is None: return default_color
+    
+    #find the first <text> tag (triple {{{ to mask { in f-string)
+    first_text_tag = next(root_element.iter(f"{{{SVG_NAMESPACE_URI}}}text"), None)
+    
+    if first_text_tag is None:
+        print("No text tag found in SVG.")
+        return default_color
+    
+    # make a list of all element going from first_text_tag up to root
+    current_element = first_text_tag
+    element_path = []
+    while current_element is not None:
+        element_path.append(current_element)
+        #stop at root
+        if current_element is root_element: break
+        #next    
+        current_element  = get_parent(root_element, current_element) 
+        
+        
+    # go through this hierarchy 
+    for elem in element_path:
+       # check style attrib with priority
+       if 'style' in elem.attrib:
+           style_attr_value = elem.attrib('style')
+           # regexp searches for fill with or without spaces and returns the value after the colon
+           match = re.search(r"fill\s*:\s*([^;]+)", style_attr_value)
+           if match: 
+               print(f"Found colour in style attribute of {elem.tag} returning {elem.group(1).strip()}.")
+               return elem.group(1).strip()
+       #direct fill attrib?
+       if 'fill' in elem.attrib:
+           print(f"Found direct fill attribute. Element tag: {elem.tag} returning {elem.attrib['fill']}.")
+           return elem.attrib['fill']
+    # just in case
+    print("No colour found - returning black.")
+    return default_color
+
+def add_explanation_text(
+        root_element, 
+        explanation_text = "Move your mouse over the element to see more details",
+        position_offset = [20,20],
+        font_size = 12, 
+        additional_link = None        
+        ):
+    """
+    Adds bottom left an extra-text to the svg picture and modifies height to avoid overlapping
+
+    Parameters
+    ----------
+    root_element : xml root of the svg file
+        
+    explanation_text : STRING, optional
+        DESCRIPTION. The text to place in the picture.
+    position_offset : list of integers, optional
+        DESCRIPTION. The distance of the text [x,y] from the margin.
+    font_size : int, optional
+        DESCRIPTION. The fontsize of the text.
+    additional_link : List of 2 strings, optional
+        DESCRIPTION. Shows an additional link on the bottom [link, display_text].
+
+    Returns
+    -------
+    The modified root element
+
+    """
+    if root_element is None: 
+        print("Error: No SVG root element provided to add explanation text.")
+        return None
+    
+    
+    # trying to get width and height
+    try: 
+        #svg_width = int(root_element.get('width', '300'))
+        svg_height = int(root_element.get('height', '400'))
+    except ValueError:
+        print("Warning: Could not parse SVG width/height. Using default values.")
+        #svg_width = 300
+        svg_height = 400
+    
+    text_x_coord = str(position_offset[0])
+    if not isinstance(explanation_text, list): 
+        explanation_text = [explanation_text]
+    
+    # calculate y-position for first line
+    #
+    # y postion = svg_height - position_offset[1]
+    #               - (number of lines)*text_height
+    #               - text height if additional link is not none
+    text_height_em = 1.2 # approx text height in em
+    if additional_link:
+        num_lines = len(explanation_text) +1
+    else:
+        num_lines = len(explanation_text)
+    line_spacing_px = font_size*text_height_em
+    
+    svg_height += num_lines*line_spacing_px+position_offset[1]
+    root_element.set('height', str(svg_height))
+    
+    text_y_firstline = svg_height - position_offset[1] - num_lines*line_spacing_px
+    
+    fill_color = get_inherited_fill_color(root_element) # make it the same colour as the rest of the text
+    # make a blueprint of each text element#
+    explanation_text_elem = ET.Element(
+        f"{{{SVG_NAMESPACE_URI}}}text",
+        attrib={
+            'x': text_x_coord,
+            'y': str(text_y_firstline),
+            'font-size': str(font_size),
+            'fill': fill_color,
+            'font-family': 'Arial, sans-serif',
+            'stroke': 'none',
+            'stroke-width': '0'
+        }
+    )
+    
+    for i,line in enumerate(explanation_text):
+        # work with tspan and Subelement for each line - relatively spaced to the previous
+        tspan_attr = {'x': text_x_coord}
+        if i==0:
+            tspan_attr['dy'] = "0em" 
+        else:
+            tspan_attr['dy'] = str(text_height_em)
+        tspan_element = ET.SubElement(
+            explanation_text_elem,
+            f"{{{SVG_NAMESPACE_URI}}}tspan",
+            attrib = tspan_attr
+        )
+        tspan_element.text = line
+    root_element.append(explanation_text_elem)
+    
+    if additional_link:
+        if not (isinstance(additional_link, list) and isinstance(additional_link[0], str) and isinstance(additional_link[1], str)):
+                print("Cannot print additional link. Wrong type. Please provide a list of 2 srings.")
+        else:        
+            link_y_pos = text_y_firstline + (num_lines-1)*line_spacing_px
+            
+            a_element = ET.Element(
+                f"{{{SVG_NAMESPACE_URI}}}a",
+                attrib = {f"{{{XLINK_NAMESPACE_URI}}}href": additional_link[0], "target": "_blank"}
+            )
+            link_text_element = ET.SubElement(
+                a_element,
+                f"{{{SVG_NAMESPACE_URI}}}text",
+                attrib = {
+                    'x': text_x_coord,
+                    'y': str(link_y_pos),
+                    'font-size': str(font_size),
+                    'fill': fill_color,
+                    'font-family': 'Arial, sans-serif',
+                    'stroke': 'none',
+                    'stroke-width': '0'
+                }
+            )
+            link_text_element.text = additional_link[1]
+            root_element.append(a_element)
+            print(f"Added additional link {additional_link}")
+    return root_element
+
+def embed_svg_in_html(xmlroot):
+    """
+    Embeds the svg code in a ridiculously tiny html code
+
+    Parameters
+    ----------
+    xmlroot : xmlroot of the SVG 
+        
+    Returns
+    -------
+    html code including the SVG
+
+    """        
+    
+    #unicode is necessary - otherwise you get a byte string which we do not want
+    svg_xml_code = ET.tostring(xmlroot, encoding='unicode', xml_declaration=False)
+    
+    html_template = f"""<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+    </head>
+    <body>
+        {svg_xml_code}
+    </body>
+    </html>
+    """
+    print(f"svg_xmlcode = {svg_xml_code}")
+    return html_template
+    
 def main():
     ''' 
     main routine
@@ -320,8 +546,11 @@ def main():
     print(data2write)
     # add the balloons and the links
     newxmlroot = modify_text_tags(xmlroot, data2write)
-    tree = ET.ElementTree(newxmlroot)
+    exp_text = ["Move your mouse over the items"]
+    add_link = ["https://github.com/andreas-techdev/cvmap", "Made by cvmap"]
+    newxmlroot = add_explanation_text(newxmlroot, explanation_text=exp_text, additional_link=add_link)
     
+    tree = ET.ElementTree(newxmlroot)
     #write tree to new svg
     filename_output = filename_woextension + "_with_balloons.svg"
     try:
@@ -333,7 +562,14 @@ def main():
     except Exception as e:
         print(f"Error writing SVG file '{filename_output}': {e}")
     
-
+    html_code = embed_svg_in_html(newxmlroot)
+    filename_html = filename_woextension+".html"
+    try:
+        with open(filename_html, "w", encoding=encoding) as f:
+            f.write(html_code)
+    except IOError as e:
+        print(f"Error writing html-file: {e}")
+        
 if __name__ == "__main__":
     main()
 
