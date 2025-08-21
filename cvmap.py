@@ -9,14 +9,15 @@ Basic useage:
     - Now you have got a .toml-file you can edit. Add any balloons and links
     - Run cvmap once again, open the ..._with_balloons.svg or the created html-file and enjoy.
  
-Example file: see examples. This script transforms examples/tintin.svg   to tintin_with_balloons.svg
+Example file: This script transforms example/CVTintin.svg   
+              to CVTintin_with_balloons.svg and CVTintin.html
+              if you just confirm the file open dialogue
  
 Created on Aug  12 2025
 
 @author: andreas_techdev
 
 TODO
- - add file input dialogue / command line interface
  - change print statements to logger calls
  - put default globals in config file
  
@@ -25,16 +26,13 @@ import xml.etree.ElementTree as ET
 import re
 import os, shutil, sys
 import tomli, tomli_w
-
+from cvmap_filehandling import get_filename
 
 
 #######################################################
 # Config and Input - to be cleaned up later
 ######################################################
 
-#### PUT YOUR FILENAME HERE #######
-filename= './example/CVTintin.svg'
-filename_woextension, _ = os.path.splitext(filename)
 fieldnames = ["element", "balloon", "link"]
 SVG_NAMESPACE_URI = "http://www.w3.org/2000/svg"
 ET.register_namespace('', SVG_NAMESPACE_URI) 
@@ -515,16 +513,17 @@ def embed_svg_in_html(xmlroot):
     </body>
     </html>
     """
-    print(f"svg_xmlcode = {svg_xml_code}")
     return html_template
     
 def main():
     ''' 
     main routine
     '''
-    
+   
+    filename=get_filename()
+    filename_woextension, _ = os.path.splitext(filename)
+
     xmlroot, element_list = ReadSVG(filename)
-    
     filename_toml = filename_woextension + ".toml"
     
     # creating a backup of the toml file
